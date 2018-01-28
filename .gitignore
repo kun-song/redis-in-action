@@ -1,0 +1,14 @@
+/.idea
+*.iml
+.DS_Store
+target
+project/project
+project/target
+*.orig
+
+*#
+*~
+.#*
+.*.swp
+*.vim
+.ensime*
