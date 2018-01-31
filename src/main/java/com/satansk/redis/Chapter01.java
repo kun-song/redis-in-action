@@ -133,22 +133,58 @@ public class Chapter01 {
         return getArticles(conn, page, "score:");
     }
 
+    /**
+     * 获取 评分最高 or 最新发布 的文章
+     *
+     * 1. zrevrange
+     *   （1）sorted set 的元素以 score 从高到低 顺序排列
+     *   （2）取出起始 index 范围内的元素
+     *   （3）除了元素排序外，与 zrange 完全相同
+     *
+     * 2. hgetall
+     *   （1）获取 key 对应的所有 k -> v
+     *   （2）返回值类型：Map<String, String>
+     */
     private List<Map<String, String>> getArticles(Jedis conn, int page, String order) {
         int start = (page - 1) * ARTICLES_PER_PAGE;
         int end = start + ARTICLES_PER_PAGE - 1;
 
-        Set<String> ids = conn.zrange(order, start, end);
+        // times: 新 -> 旧    score: 高 -> 低
+        Set<String> ids = conn.zrevrange(order, start, end);
+
+        /*
+         * articles 每个元素为一个 article Map，map 中存放 article 基本信息 + id -> xx
+         */
         List<Map<String, String>> articles = new ArrayList<Map<String, String>>();
+
         for (String id : ids) {
             Map<String, String> articleData = conn.hgetAll(id);
             articleData.put("id", id);
+
             articles.add(articleData);
         }
 
         return articles;
     }
 
+    /**
+     * 添加文章到群组
+     *
+     * -------group:computer------ Set ----
+     * :  article:1
+     * :  article:2
+     * :  article:3
+     * :  ...
+     * :  article:9287
+     * ------------------------------------
+     */
+    public void addGroups(Jedis conn, String articleId, String[] toAdd) {
+        String article = "article:" + articleId;
 
+        for (String group : toAdd) {
+            conn.sadd("group:" + group, article);
+        }
+    }
 
     private void printArticles(List<Map<String,String>> articles){
         for (Map<String,String> article : articles){
