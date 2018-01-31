@@ -1,6 +1,8 @@
 package com.satansk.redis;
 
+import com.sun.codemodel.internal.util.JavadocEscapeWriter;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.ZParams;
 
 import java.util.*;
 
@@ -35,15 +37,22 @@ public class Chapter01 {
             System.out.println(" " + entry.getKey() + ": " + entry.getValue());
         }
 
-        System.out.println();
-
         // 投票
+        System.out.println("-------------------------> vote");
+
         articleVote(conn, "name1", "article:" + articleId);
         articleVote(conn, "name2", "article:" + articleId);
         List<Map<String, String>> articles = getArticles(conn, 1);
         printArticles(articles);
         assert articles.size() >= 1;
 
+        // 群组
+        System.out.println("-------------------------> group");
+
+        addGroups(conn, articleId, new String[] { "computer" });
+        articles = getGroupArticles(conn, "computer", 10);
+        printArticles(articles);
+        assert articles.size() >= 1;
     }
 
     /**
@@ -178,7 +187,7 @@ public class Chapter01 {
      * :  article:9287
      * ------------------------------------
      */
-    public void addGroups(Jedis conn, String articleId, String[] toAdd) {
+    private void addGroups(Jedis conn, String articleId, String[] toAdd) {
         String article = "article:" + articleId;
 
         for (String group : toAdd) {
@@ -186,10 +195,39 @@ public class Chapter01 {
         }
     }
 
-    private void printArticles(List<Map<String,String>> articles){
-        for (Map<String,String> article : articles){
+    // 获取群组文章，按发布时间排序
+    private List<Map<String, String>> getGroupArticles(Jedis conn, String group, int page) {
+        return getGroupArticles(conn, group, page, "score:");
+    }
+
+    /**
+     * 获取群组文章
+     *
+     * 1. zinterscore(dstkey, String ... sets)
+     *   （1）对可变参数 sets 代表的集合做交际，将结果存放在 dstKey 上
+     *   （2）默认聚合方式为 ZParams.Aggregate.SUM，即将同时存在于所有集合中的 k 的分值求和，作为新 Sorted Set 的 value
+     */
+    private List<Map<String, String>> getGroupArticles(Jedis conn, String group, int page, String order) {
+        // score:computer or time:computer
+        String key = order + group;
+
+        if (! conn.exists(key)) {
+            // 聚合函数：MAX
+            ZParams params = new ZParams().aggregate(ZParams.Aggregate.MAX);
+            conn.zinterstore(key, params, "group:" + group, order);
+
+            // zinterscore 效率较低，将其计算结果缓存 60s
+            conn.expire(key, 60);
+        }
+
+        // 从 score:computer or time:computer 中读取文章
+        return getArticles(conn, page, key);
+    }
+
+    private void printArticles(List<Map<String,String>> articles) {
+        for (Map<String,String> article : articles) {
             System.out.println("  id: " + article.get("id"));
-            for (Map.Entry<String,String> entry : article.entrySet()){
+            for (Map.Entry<String,String> entry : article.entrySet()) {
                 if (entry.getKey().equals("id")){
                     continue;
                 }
